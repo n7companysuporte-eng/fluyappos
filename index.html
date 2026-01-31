@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Fluy • Controle Financeiro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{background:linear-gradient(135deg,#16a34a,#facc15)}
+.fade{animation:fade .4s ease}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.logo-flow{animation:flow 3s ease-in-out infinite}
+@keyframes flow{0%{transform:translateY(0)}50%{transform:translateY(-6px)}100%{transform:translateY(0)}}
+</style>
+</head>
+
+<body class="min-h-screen flex justify-center text-gray-800">
+<div class="w-full max-w-md p-4">
+
+<!-- LOGO -->
+<div class="text-center text-white mb-4">
+  <div class="mx-auto bg-white w-16 h-16 rounded-full flex items-center justify-center mb-2 logo-flow">
+    📊
+  </div>
+  <h1 class="text-2xl font-bold">Fluy</h1>
+  <p class="text-sm opacity-90">Seu dinheiro em movimento</p>
+</div>
+
+<!-- LOGIN -->
+<div id="loginBox" class="bg-white rounded-2xl p-4 shadow fade">
+  <input id="loginUser" class="w-full mb-2 p-3 border rounded-xl" placeholder="Usuário">
+  <input id="loginPass" type="password" class="w-full mb-3 p-3 border rounded-xl" placeholder="Senha">
+  <button onclick="login()" class="w-full bg-green-600 text-white p-3 rounded-xl mb-2">Entrar</button>
+  <button onclick="showRegister()" class="w-full border p-3 rounded-xl">Criar conta</button>
+</div>
+
+<!-- REGISTER -->
+<div id="registerBox" class="bg-white rounded-2xl p-4 shadow fade hidden">
+  <input id="regUser" class="w-full mb-2 p-3 border rounded-xl" placeholder="Usuário">
+  <input id="regPass" type="password" class="w-full mb-3 p-3 border rounded-xl" placeholder="Senha">
+  <button onclick="register()" class="w-full bg-green-600 text-white p-3 rounded-xl mb-2">Cadastrar</button>
+  <button onclick="showLogin()" class="w-full border p-3 rounded-xl">Voltar</button>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden fade">
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <input type="month" id="month" class="w-full p-3 border rounded-xl" onchange="render()">
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <h2 class="text-3xl font-bold text-green-600">R$ <span id="balance">0.00</span></h2>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <input id="limit" type="number" class="w-full p-3 border rounded-xl mb-2" placeholder="Limite">
+  <button onclick="saveLimit()" class="w-full bg-green-600 text-white p-3 rounded-xl">Salvar limite</button>
+  <p class="mt-2">Uso do limite: <strong id="limitUse">0%</strong></p>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <input id="incomeValue" type="number" class="w-full p-3 border rounded-xl mb-2" placeholder="Receita">
+  <select id="incomeCat" class="w-full p-3 border rounded-xl mb-2"><option>Salário</option></select>
+  <button onclick="addItem('income')" class="w-full bg-green-600 text-white p-3 rounded-xl">Adicionar</button>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <input id="expenseValue" type="number" class="w-full p-3 border rounded-xl mb-2" placeholder="Despesa">
+  <select id="expenseCat" class="w-full p-3 border rounded-xl mb-2">
+    <option>Moradia</option><option>Alimentação</option><option>Lazer</option>
+  </select>
+  <button onclick="addItem('expense')" class="w-full bg-red-500 text-white p-3 rounded-xl">Adicionar</button>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <canvas id="chart"></canvas>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow mb-3">
+  <ul id="categorySummary" class="space-y-2 text-sm"></ul>
+</div>
+
+<button onclick="logout()" class="w-full bg-black text-white p-3 rounded-xl">Sair</button>
+</div>
+</div>
+
+<script>
+let users=JSON.parse(localStorage.getItem("fluy_users"))||{};
+let currentUser=localStorage.getItem("fluy_logged");
+let chart;
+
+function showRegister(){loginBox.classList.add("hidden");registerBox.classList.remove("hidden")}
+function showLogin(){registerBox.classList.add("hidden");loginBox.classList.remove("hidden")}
+
+function register(){
+  users[regUser.value]={pass:regPass.value,data:[],limit:0,streak:0,last:null,achievements:[]};
+  localStorage.setItem("fluy_users",JSON.stringify(users));
+  showLogin();
+}
+
+function login(){
+  currentUser=loginUser.value;
+  localStorage.setItem("fluy_logged",currentUser);
+  startApp();
+}
+
+function logout(){localStorage.clear();location.reload()}
+
+function startApp(){
+  loginBox.classList.add("hidden");
+  registerBox.classList.add("hidden");
+  app.classList.remove("hidden");
+  month.value=new Date().toISOString().slice(0,7);
+  render();
+}
+
+function addItem(type){
+  const v=type==="income"?+incomeValue.value:+expenseValue.value;
+  const c=type==="income"?incomeCat.value:expenseCat.value;
+  users[currentUser].data.push({type,value:v,cat:c,month:month.value});
+  gamify();
+  localStorage.setItem("fluy_users",JSON.stringify(users));
+  render();
+}
+
+function gamify(){
+  const u=users[currentUser];
+  const today=new Date().toDateString();
+  if(u.last!==today){u.streak++;u.last=today}
+  if(u.streak===7) u.achievements.push("🔥 7 dias seguidos");
+  if(u.data.length===1) u.achievements.push("🏆 Primeiro registro");
+}
+
+function render(){
+  const u=users[currentUser];
+  let inc=0,exp=0,cats={};
+  u.data.filter(i=>i.month===month.value).forEach(i=>{
+    i.type==="income"?inc+=i.value:(exp+=i.value,cats[i.cat]=(cats[i.cat]||0)+i.value);
+  });
+  balance.innerText=(inc-exp).toFixed(2);
+  limitUse.innerText=u.limit?Math.min(100,(exp/u.limit*100).toFixed(0))+"%":"0%";
+
+  categorySummary.innerHTML="";
+  Object.entries(cats).forEach(([c,v])=>{
+    categorySummary.innerHTML+=`<li class="flex justify-between bg-gray-100 p-2 rounded">
+      <span>${c}</span><strong>R$ ${v.toFixed(2)}</strong></li>`;
+  });
+
+  // Inteligência Financeira
+  if(exp>u.limit) categorySummary.innerHTML+=`<li class="text-red-600">⚠️ Gastos acima do limite</li>`;
+  if(inc-exp>0) categorySummary.innerHTML+=`<li class="text-green-600">✅ Mês positivo</li>`;
+  u.achievements.forEach(a=>{
+    categorySummary.innerHTML+=`<li>${a}</li>`;
+  });
+}
+
+if(currentUser&&users[currentUser]) startApp();
+</script>
+</body>
+</html>
